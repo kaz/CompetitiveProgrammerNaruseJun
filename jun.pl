@@ -11,35 +11,56 @@ use WWW::Mechanize;
 
 # cpan install WWW::Mechanize LWP::Protocol::https Browser::Open
 
-##############
-### CONFIG ###
-##############
+###################
+### USER CONFIG ###
+###################
 
-# login information
-my $login = {
+# login information (AizuOnlineJudge)
+my $aojLogin = {
+	"userID" => "kazsw",
+	"password" => ""
+};
+# login information (AtCoder)
+my $acLogin = {
 	"name" => "kazsw",
 	"password" => ""
 };
 
+#####################
+### SYSTEM CONFIG ###
+#####################
+
 # working directory
 my $workDir = "./jun";
 
+# setup job mapping
+my %sites = (
+	"TokyoTechCoder" => \&_setupTTC,
+	"AizuOnlineJudge" => \&_setupAOJ,
+	"AtCoder" => \&_setupAC
+);
+
+# language definition
 my %langs = (
 	"C++" => ["C++14", "C++11"],
 	"Perl" => ["Perl"]
 );
+# language extension
 my %extension = (
 	"C++" => "cpp",
 	"Perl" => "pl"
 );
+# build commands
 my %buildCmd = (
 	"C++" => sub { "g++", "-std=c++11", "-o", "${workDir}/run.tmp", @_ },
 	"Perl" => sub { (&isWin ? "copy" : "cp"), @_, "${workDir}/run.tmp" }
 );
+# test commands
 my %testCmd = (
 	"C++" => sub { "${workDir}/run.tmp", "<", @_ },
 	"Perl" => sub { "perl", "${workDir}/run.tmp", "<", @_ },
 );
+# language templates
 my %template = (
 #######################################
 	"C++" => <<'EOS'
@@ -61,24 +82,21 @@ EOS
 #######################################
 );
 
-my %sites = (
-	"TokyoTechCoder" => \&_setupTTC,
-	"AtCoder" => \&_setupAC
-);
-
 ############
 ### MAIN ###
 ############
 
 # select job
-if($ARGV[0] eq "setup"){
-	&setup;
-}elsif($ARGV[0] eq "gen"){
-	&gen;
+unless(scalar(@ARGV)){
+	die("No job was specified");
+}elsif($ARGV[0] eq "setup"){
+	&setup(@ARGV[1..$#ARGV]);
+}elsif($ARGV[0] eq "make"){
+	&make(@ARGV[1..$#ARGV])
 }elsif($ARGV[0] eq "test"){
-	&test($ARGV[1]);
+	&test(@ARGV[1..$#ARGV])
 }elsif($ARGV[0] eq "submit"){
-	&submit($ARGV[1]);
+	&submit(@ARGV[1..$#ARGV])
 }
 
 ############
@@ -90,11 +108,13 @@ sub setup {
 	# prepare working directory
 	mkdir($workDir, 0755);
 	
-	# generate mechanize instance
-	my $mech = WWW::Mechanize->new();
-	
-	# setup
-	$sites{userSelect("Select site", sort(keys(%sites)))}->($mech);
+	# start setup
+	my $mech = getMechanize();
+	my $siteName = do {
+		my @siteNames = sort(keys(%sites));
+		userSelectIfNotMatch(uc(shift || 0), [map { s/[a-z]//gr } @siteNames], "site", \@siteNames);
+	};
+	$sites{$siteName}->($mech, @_);
 	
 	# save cookie
 	serialize("cookie.txt", $mech->cookie_jar());
@@ -103,7 +123,97 @@ sub setup {
 
 # setup TokyoTechCoder
 sub _setupTTC {
+	my $mech = $_[0];
 	
+	# select contest
+	my $contestId = do {
+		if($_[1]){
+			$_[1];
+		}else{
+			userSelect("Select contest", do {
+				print("* Fetching contest list ...", $/);
+				$mech->get("http://ttc.wanko.cc/");
+				$_ = $mech->content();
+				
+				my @contests;
+				while(/\/contests\/([^"]+)/g){
+					push(@contests, $1);
+				}
+				@contests[0..($#contests < 4 ? $#contests : 4)];
+			});
+		}
+	};
+	
+	# get problem list
+	print("* Fetching problem list ...", $/);
+	$mech->get("http://ttc.wanko.cc/contests/${contestId}");
+	$_ = $mech->content();
+	
+	# get problem info
+	unlink("${workDir}/problem.txt");
+	while(/\/aoj\/(\d+)/g){
+		&_setupAOJ($mech, $1);
+	}
+}
+
+# setup AizuOnlineJudge
+sub _setupAOJ {
+	my $mech = $_[0];
+	
+	# get problem id
+	my $problemId = do {
+		unless($_[1]){
+			print("Input problem ID: ");
+			$_[1] = <STDIN>;
+			chop($_[1]);
+		}
+		$_[1];
+	};
+	
+	# get problem info
+	print("* Fetching problem aoj${problemId} ...", $/);
+	$mech->get("http://judge.u-aizu.ac.jp/onlinejudge/description.jsp?id=${problemId}");
+	
+	# parse and save test cases
+	save("aoj${problemId}", do {
+		local $_ = $mech->content();
+		
+		my @tests;
+		while(/<pre>(.+?)<\/pre>/gs){
+			push(@tests, $1);
+		}
+		if(scalar(@tests) % 2){
+			shift(@tests);
+		}
+		
+		my %data;
+		for(my $i = 1; scalar(@tests);){
+			my $in = formatTestCase(shift(@tests));
+			my $out = formatTestCase(shift(@tests));
+			if($in !~ /<.+>/ && $out !~ /<.+>/){
+				$data{"in"}{$i} = $in;
+				$data{"out"}{$i++} = $out;
+			}
+		}
+		\%data;
+	});
+	
+	# add submission info to problem.txt
+	serialize("problem.txt", do {
+		my $problem = do {
+			if(-e "${workDir}/problem.txt"){
+				deserialize("problem.txt");
+			}else{
+				{};
+			}
+		};
+		
+		unless($mech->content() =~ /[^"]+#submit[^"]+/){
+			die("Could not find submit URL");
+		}
+		$problem->{"aoj${problemId}"} = "http://judge.u-aizu.ac.jp/onlinejudge/${&}";
+		$problem;
+	});
 }
 
 # setup AtCoder
@@ -112,27 +222,32 @@ sub _setupAC {
 	
 	# select contest
 	my $url = do {
-		my $contestId = userSelect("Select contest", do {
-			print("* Fetching contest list ...", $/);
-			$mech->get("http://atcoder.jp/");
-			unless($mech->content() =~ /次回コンテスト<\/h3>(.+?)<h3>/s){
-				die("Could not find contest list");
+		"https://" . do {
+			if($_[1]){
+				$_[1];
+			}else{
+				userSelect("Select contest", do {
+					print("* Fetching contest list ...", $/);
+					$mech->get("http://atcoder.jp/");
+					unless($mech->content() =~ /次回コンテスト<\/h3>(.+?)<h3>/s){
+						die("Could not find contest list");
+					}
+					$_ = $1;
+					
+					my @contests;
+					while(/\/\/([^.]+)\.contest/g){
+						push(@contests, $1);
+					}
+					@contests;
+				});
 			}
-			$_ = $1;
-			
-			my @contests;
-			while(/\/\/([^.]+)\.contest/g){
-				push(@contests, $1);
-			}
-			@contests;
-		});
-		"https://${contestId}.contest.atcoder.jp";
+		} . ".contest.atcoder.jp";
 	};
 	
 	# login
 	print("* Logging in ...", $/);
 	$mech->get("${url}/login");
-	$mech->submit_form(fields => $login);
+	$mech->submit_form(fields => $acLogin);
 	
 	# save problem info
 	serialize("problem.txt", do {
@@ -154,10 +269,7 @@ sub _setupAC {
 		my $parse = sub {
 			my %data;
 			while($_[0] =~ /${_[1]}例\s*(\d+)(?:.|\s)+?<pre.*?>((?:.|\s)+?)<\/pre>/g){
-				my $ref = \$data{$1};
-				$$ref = $2;
-				$$ref =~ s/^\s*(.+?)\s*$/$1\n/s;
-				$$ref =~ s/[\r\n]+/\n/g;
+				$data{$1} = formatTestCase($2);
 			}
 			\%data;
 		};
@@ -181,10 +293,16 @@ sub _setupAC {
 }
 
 # create source file
-sub gen {
+sub make {
 	# select problem and language
-	my $problem = userSelect("Select problem", sort(keys(%{deserialize("problem.txt")})));
-	my $language = userSelect("Select language", sort(keys(%langs)));
+	my $problem = do {
+		my @problems = sort(keys(%{deserialize("problem.txt")}));
+		userSelectIfNotMatch(uc(shift || 0), [map { uc } @problems], "problem", \@problems);
+	};
+	my $language = do {
+		my @languages = sort(keys(%langs));
+		userSelectIfNotMatch(uc(shift || 0), [map { uc } @languages], "language", \@languages);
+	};
 	my $fileName = "./${problem}.${extension{$language}}";
 	
 	# ask if file exists
@@ -198,6 +316,7 @@ sub gen {
 	
 	# create
 	writeFile($fileName, $template{$language});
+	print($fileName);
 }
 
 # test program
@@ -230,6 +349,8 @@ sub test {
 				"[Accepted]";
 			}else{
 				my @report = (
+					"------- INPUT --------", $/,
+					$testCases->{"in"}->{$_}, $/,
 					"------ EXPECTED ------", $/,
 					$expected, $/,
 					"------- ACTUAL -------", $/,
@@ -237,9 +358,7 @@ sub test {
 					"----------------------"
 				);
 				
-				$actual =~ s/\s//g;
-				$expected =~ s/\s//g;
-				if($actual eq $expected){
+				if(($actual =~ s/\s//gr) eq ($expected =~ s/\s//gr)){
 					("[PresentaionError]", $/, @report);
 				}else{
 					("[WrongAnswer]", $/, @report);
@@ -260,51 +379,91 @@ sub submit {
 	unless($url = deserialize("problem.txt")->{$url}){
 		die("Could not find problem ID");
 	}
-	my $taskId = do {
-		$url =~ /\d+$/;
-		$&;
-	};
 	
 	# prepare mechanize
-	my $mech = WWW::Mechanize->new();
-	$mech->cookie_jar(deserialize("cookie.txt"));
-	
-	# submit code
-	print("Submitting source code ...", $/);
-	$mech->submit_form(fields => {
-		"source_code" => readFile($_[0]),
-		"language_id_${taskId}" => eval {
-			$mech->get($url);
-			unless($mech->content() =~ /selector-${taskId}(.+?)<\/select>/s){
-				die("Could not find language list");
-			}
-			$_ = $1;
-			
-			my %langIds;
-			while(/value="(\d+)">(.+)</g){
-				$langIds{$2} = $1;
-			}
-			
-			foreach my $target (@{$langs{$lang}}){
-				$target = quotemeta($target);
-				foreach(keys(%langIds)){
-					if(/^${target}/){
-						return $langIds{$_};
-					}
-				}
-			}
-			die("Could not find language ID");
-		}
-	});
+	my $mech = getMechanize();
 	
 	# open result on browser
 	Browser::Open::open_browser(do {
-		unless($mech->content() =~ /\/submissions\/\d+/){
-			die("Could not submission");
+		if($url =~ /judge\.u-aizu\.ac\.jp\//){
+			# get language name
+			my $langName = eval {
+				print("Fetching language list ...", $/);
+				$mech->get($url);
+				$_ = $mech->content();
+				
+				foreach my $target (@{$langs{$lang}}){
+					$target = quotemeta($target);
+					if(/"(${target})"/){
+						return $1;
+					}
+				}
+				die("Could not find language name");
+			};
+			# submit code
+			print("Submitting source code ...", $/);
+			$mech->post("http://judge.u-aizu.ac.jp/onlinejudge/webservice/submit", {
+				"language" => $langName,
+				"lessonID" => "",
+				"problemNO" => sprintf("%04d", $url =~ s/^.+(\d+)$/$1/r),
+				"sourceCode" => readFile($_[0]),
+				%$aojLogin
+			});
+			sleep(1);
+			
+			# find submission detail page
+			print("Finding submission ...", $/);
+			$mech->get("http://judge.u-aizu.ac.jp/onlinejudge/status.jsp");
+			unless($mech->content() =~ /rid=(\d+).+?\s+.+$aojLogin->{"userID"}/){
+				die("Could not find submission");
+			}
+			"http://judge.u-aizu.ac.jp/onlinejudge/review.jsp?rid=${1}#2";
+		}elsif($url =~ /contest\.atcoder\.jp\//){
+			# get language id
+			my $taskId = do {
+				$url =~ /\d+$/;
+				$&;
+			};
+			my $langId = eval {
+				print("Fetching language list ...", $/);
+				$mech->get($url);
+				unless($mech->content() =~ /selector-${taskId}(.+?)<\/select>/s){
+					die("Could not find language list");
+				}
+				$_ = $1;
+				
+				my %langIds;
+				while(/value="(\d+)">(.+)</g){
+					$langIds{$2} = $1;
+				}
+				
+				foreach my $target (@{$langs{$lang}}){
+					$target = quotemeta($target);
+					foreach(keys(%langIds)){
+						if(/^${target}/){
+							return $langIds{$_};
+						}
+					}
+				}
+				die("Could not find language ID");
+			};
+			
+			# submit code
+			print("Submitting source code ...", $/);
+			$mech->submit_form(fields => {
+				"source_code" => readFile($_[0]),
+				"language_id_${taskId}" => $langId
+			});
+			
+			# find submission detail
+			unless($mech->content() =~ /\/submissions\/\d+/){
+				die("Could not find submission");
+			}
+			$_ = $&;
+			$url =~ s/(atcoder\.jp\/).+$/$1$_/r;
+		}else{
+			die("Could not find submission-method");
 		}
-		$_ = $&;
-		$url =~ s/(atcoder\.jp\/).+$/$1$_/;
-		$url;
 	});
 }
 
@@ -312,7 +471,16 @@ sub submit {
 ### SUBROUTINES ###
 ###################
 
-# selecting something subroutine
+# get mechanize instance
+sub getMechanize {
+	my $mech = WWW::Mechanize->new();
+	if(-e "${workDir}/cookie.txt"){
+		$mech->cookie_jar(deserialize("cookie.txt"));
+	}
+	$mech;
+}
+
+# ask user to select something
 sub userSelect {
 	print($/);
 	
@@ -330,6 +498,24 @@ sub userSelect {
 		}
 	}
 	$select;
+}
+
+# ask user when user-specified selection is not found
+sub userSelectIfNotMatch {
+	if($_[0]){
+		for(my $i=0; $i<scalar(@{$_[1]}); $i++){
+			if($_[0] eq $_[1]->[$i]){
+				return $_[3]->[$i];
+			}
+		}
+		die("No such ${_[2]}");
+	}
+	userSelect($_[2], @{$_[3]});
+}
+
+# format test case
+sub formatTestCase {
+	($_[0] =~ s/^\s*(.+?)\s*$/$1\n/sr) =~ s/[\r\n]+/\n/gr;
 }
 
 # parse file name
@@ -356,13 +542,13 @@ sub isWin {
 # execute external program
 sub runGetStatusCode {
 	if(&isWin){
-		@_ = map { s/\//\\/g; $_; } @_;
+		@_ = map { s/\//\\/gr; } @_;
 	}
 	system(@_);
 }
 sub runGetOutput {
 	if(&isWin){
-		$_[0] =~ s/\//\\/g;
+		@_ = map { s/\//\\/gr; } @_;
 	}
 	local $_ = join(" ", @_);
 	`$_`;
