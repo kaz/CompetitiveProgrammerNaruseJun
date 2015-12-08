@@ -26,6 +26,11 @@ Add below code to your .vimrc (with NeoBundle)
 
 ## Usage
 
+### Configuration
+`:Jun config` (Prompt)  
+`:Jun config AOJ` (Prompt)  
+`:Jun config AC [AtCoderID] [AtCoderPassword]`
+
 ### Setup
 `:Jun setup` (Prompt)  
 `:Jun setup AOJ` (Prompt)  

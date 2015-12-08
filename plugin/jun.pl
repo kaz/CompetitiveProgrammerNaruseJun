@@ -18,12 +18,12 @@ use WWW::Mechanize;
 # login information
 my %login = (
 	"AizuOnlineJudge" => {
-		"userID" => "", # AOJ_ID (do not modify this comment!)
-		"password" => "" # AOJ_PASS (do not modify this comment!)
+		"userID" => '', # AOJ_ID (do not modify this comment!)
+		"password" => '' # AOJ_PASS (do not modify this comment!)
 	},
 	"AtCoder" => {
-		"name" => "", # AC_ID (do not modify this comment!)
-		"password" => "" # AC_PASS (do not modify this comment!)
+		"name" => '', # AC_ID (do not modify this comment!)
+		"password" => '' # AC_PASS (do not modify this comment!)
 	}
 );
 
@@ -158,10 +158,10 @@ sub config {
 	my $pass = $ask->(shift(), "${target} password");
 	
 	# write id and password
-	unless(s/([^"]*)",?\s*#\s*${short}_ID/${id}", # ${short}_ID/){
+	unless(s/=> ["'](.*)["'],?\s*#\s*${short}_ID/=> '${id}', # ${short}_ID/){
 		die("Could not find ${short}_ID");
 	}
-	unless(s/([^"]*)",?\s*#\s*${short}_PASS/${pass}" # ${short}_PASS/){
+	unless(s/=> ["'](.*)["'],?\s*#\s*${short}_PASS/=> '${pass}' # ${short}_PASS/){
 		die("Could not find ${short}_PASS");
 	}
 	writeFile($0, $_);
