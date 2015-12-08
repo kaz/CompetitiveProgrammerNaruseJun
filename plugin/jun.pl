@@ -15,16 +15,17 @@ use WWW::Mechanize;
 ### USER CONFIG ###
 ###################
 
-# login information (AizuOnlineJudge)
-my $aojLogin = {
-	"userID" => "kazsw",
-	"password" => ""
-};
-# login information (AtCoder)
-my $acLogin = {
-	"name" => "kazsw",
-	"password" => ""
-};
+# login information
+my %login = (
+	"AizuOnlineJudge" => {
+		"userID" => "", # AOJ_ID (do not modify this comment!)
+		"password" => "" # AOJ_PASS (do not modify this comment!)
+	},
+	"AtCoder" => {
+		"name" => "", # AC_ID (do not modify this comment!)
+		"password" => "" # AC_PASS (do not modify this comment!)
+	}
+);
 
 #####################
 ### SYSTEM CONFIG ###
@@ -43,28 +44,36 @@ my %sites = (
 # language definition
 my %langs = (
 	"C++" => ["C++14", "C++11"],
-	"Perl" => ["Perl"]
+	"D" => ["D"],
+	"Perl" => ["Perl"],
+	"Ruby" => ["Ruby"]
 );
 # language extension
 my %extension = (
 	"C++" => "cpp",
-	"Perl" => "pl"
+	"D" => "d",
+	"Perl" => "pl",
+	"Ruby" => "rb"
 );
 # build commands
 my %buildCmd = (
 	"C++" => sub { "g++", "-std=c++11", "-o", "${workDir}/run.tmp", @_ },
-	"Perl" => sub { (&isWin ? "copy" : "cp"), @_, "${workDir}/run.tmp" }
+	"D" => sub { "dmd", "-of${workDir}/run.tmp", @_ },
+	"Perl" => sub { (&isWin ? "copy" : "cp"), @_, "${workDir}/run.tmp" },
+	"Ruby" => sub { (&isWin ? "copy" : "cp"), @_, "${workDir}/run.tmp" }
 );
 # test commands
 my %testCmd = (
 	"C++" => sub { "${workDir}/run.tmp", "<", @_ },
+	"D" => sub { "${workDir}/run.tmp", "<", @_ },
 	"Perl" => sub { "perl", "${workDir}/run.tmp", "<", @_ },
+	"Ruby" => sub { "ruby", "${workDir}/run.tmp", "<", @_ }
 );
 # language templates
 my %template = (
 #######################################
 	"C++" => <<'EOS'
-#include <bits/stdc++.h>
+#include <iostream>
 using namespace std;
 
 int main(){
@@ -72,12 +81,24 @@ int main(){
 }
 EOS
 #######################################
+	,"D" => <<'EOS'
+import std.stdio;
+
+void main(){
+	"Hello, world!".writeln;
+}
+EOS
+######################################}
 	,"Perl" => <<'EOS'
 use utf8;
 use strict;
 use warnings;
 
 print("Hello, world!", $/);
+EOS
+######################################
+	,"Ruby" => <<'EOS'
+puts("Hello, world!")
 EOS
 #######################################
 );
@@ -87,21 +108,62 @@ EOS
 ############
 
 # select job
-unless(scalar(@ARGV)){
+my @lcArgs = map { lc } @ARGV;
+unless(scalar(@lcArgs)){
 	die("No job was specified");
-}elsif($ARGV[0] eq "setup"){
-	&setup(@ARGV[1..$#ARGV]);
-}elsif($ARGV[0] eq "make"){
-	&make(@ARGV[1..$#ARGV])
-}elsif($ARGV[0] eq "test"){
-	&test(@ARGV[1..$#ARGV])
-}elsif($ARGV[0] eq "submit"){
-	&submit(@ARGV[1..$#ARGV])
+}elsif($lcArgs[0] eq "config"){
+	&config($lcArgs[1], @ARGV[2..$#ARGV]);
+}elsif($lcArgs[0] eq "setup"){
+	&setup(@lcArgs[1..$#lcArgs]);
+}elsif($lcArgs[0] eq "make"){
+	&make(@lcArgs[1..$#lcArgs])
+}elsif($lcArgs[0] eq "test"){
+	&test(@lcArgs[1..$#lcArgs])
+}elsif($lcArgs[0] eq "submit"){
+	&submit(@lcArgs[1..$#lcArgs])
+}else{
+	die("No such action");
 }
 
 ############
 ### JOBS ###
 ############
+
+# configuration
+sub config {
+	# get target site
+	my $target = do {
+		my @targets = sort(keys(%login));
+		userSelectIfNotMatch(shift(), [map { lc(s/[a-z]//gr) } @targets], "site", \@targets);
+	};
+	my $short = $target =~ s/[a-z]//gr;
+	
+	# read myself
+	$_ = readFile($0);
+	
+	# user input subroutine
+	my $ask = sub {
+		unless(local $_ = shift()){
+			print("Input ", shift(), ": ");
+			$_ = <STDIN>;
+			chop();
+		}
+		$_;
+	};
+	
+	# ask id and password
+	my $id = $ask->(shift(), "${target} ID");
+	my $pass = $ask->(shift(), "${target} password");
+	
+	# write id and password
+	unless(s/([^"]*)",?\s*#\s*${short}_ID/${id}", # ${short}_ID/){
+		die("Could not find ${short}_ID");
+	}
+	unless(s/([^"]*)",?\s*#\s*${short}_PASS/${pass}" # ${short}_PASS/){
+		die("Could not find ${short}_PASS");
+	}
+	writeFile($0, $_);
+}
 
 # setup contest
 sub setup {
@@ -112,7 +174,7 @@ sub setup {
 	my $mech = getMechanize();
 	my $siteName = do {
 		my @siteNames = sort(keys(%sites));
-		userSelectIfNotMatch(uc(shift || 0), [map { s/[a-z]//gr } @siteNames], "site", \@siteNames);
+		userSelectIfNotMatch(shift(), [map { lc(s/[a-z]//gr) } @siteNames], "site", \@siteNames);
 	};
 	$sites{$siteName}->($mech, @_);
 	
@@ -247,7 +309,12 @@ sub _setupAC {
 	# login
 	print("* Logging in ...", $/);
 	$mech->get("${url}/login");
-	$mech->submit_form(fields => $acLogin);
+	if($mech->uri->path() =~ /login/i){
+		$mech->submit_form(fields => $login{"AtCoder"});
+		if($mech->uri->path() =~ /login/i){
+			die("Could not login");
+		}
+	}
 	
 	# save problem info
 	serialize("problem.txt", do {
@@ -297,11 +364,11 @@ sub make {
 	# select problem and language
 	my $problem = do {
 		my @problems = sort(keys(%{deserialize("problem.txt")}));
-		userSelectIfNotMatch(uc(shift || 0), [map { uc } @problems], "problem", \@problems);
+		userSelectIfNotMatch(shift(), [map { lc() } @problems], "problem", \@problems);
 	};
 	my $language = do {
 		my @languages = sort(keys(%langs));
-		userSelectIfNotMatch(uc(shift || 0), [map { uc } @languages], "language", \@languages);
+		userSelectIfNotMatch(shift(), [map { lc() } @languages], "language", \@languages);
 	};
 	my $fileName = "./${problem}.${extension{$language}}";
 	
@@ -316,7 +383,6 @@ sub make {
 	
 	# create
 	writeFile($fileName, $template{$language});
-	print($fileName);
 }
 
 # test program
@@ -400,21 +466,27 @@ sub submit {
 				}
 				die("Could not find language name");
 			};
+			
 			# submit code
 			print("Submitting source code ...", $/);
 			$mech->post("http://judge.u-aizu.ac.jp/onlinejudge/webservice/submit", {
 				"language" => $langName,
 				"lessonID" => "",
-				"problemNO" => sprintf("%04d", $url =~ s/^.+(\d+)$/$1/r),
+				"problemNO" => $url =~ s/^.+?(\d+)$/$1/r,
 				"sourceCode" => readFile($_[0]),
-				%$aojLogin
+				%{$login{"AizuOnlineJudge"}}
 			});
+			
+			# check whether submission succeeded or failed
+			if($mech->content() =~ /is wrong/i){
+				die("Could not login");
+			}
 			sleep(1);
 			
 			# find submission detail page
 			print("Finding submission ...", $/);
 			$mech->get("http://judge.u-aizu.ac.jp/onlinejudge/status.jsp");
-			unless($mech->content() =~ /rid=(\d+).+?\s+.+$aojLogin->{"userID"}/){
+			unless($mech->content() =~ /rid=(\d+).+?\s+.+$login{"AizuOnlineJudge"}->{"userID"}/){
 				die("Could not find submission");
 			}
 			"http://judge.u-aizu.ac.jp/onlinejudge/review.jsp?rid=${1}#2";
@@ -510,7 +582,7 @@ sub userSelectIfNotMatch {
 		}
 		die("No such ${_[2]}");
 	}
-	userSelect($_[2], @{$_[3]});
+	userSelect("Select ${_[2]}", @{$_[3]});
 }
 
 # format test case
@@ -536,19 +608,19 @@ sub parse {
 
 # check operating system
 sub isWin {
-	$^O =~ /win/i;
+	$^O =~ /mswin/i;
 }
 
 # execute external program
 sub runGetStatusCode {
 	if(&isWin){
-		@_ = map { s/\//\\/gr; } @_;
+		@_ = map { s/\//\\/gr } @_;
 	}
 	system(@_);
 }
 sub runGetOutput {
 	if(&isWin){
-		@_ = map { s/\//\\/gr; } @_;
+		@_ = map { s/\//\\/gr } @_;
 	}
 	local $_ = join(" ", @_);
 	`$_`;
