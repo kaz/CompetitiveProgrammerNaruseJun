@@ -9,7 +9,8 @@ function! jun#run(cmd, ...)
 	endif
 	exec join(s:exe, " ") 
 	if a:cmd == "make"
-		e `ls -Ft \| grep -v / \| head -1`
+		let s:file = system(join(["perl", s:script, "_open"], " "))
+		edit `=s:file`
 	endif
 endfunction
 

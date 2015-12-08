@@ -117,6 +117,8 @@ unless(scalar(@lcArgs)){
 	&setup(@lcArgs[1..$#lcArgs]);
 }elsif($lcArgs[0] eq "make"){
 	&make(@lcArgs[1..$#lcArgs])
+}elsif($lcArgs[0] eq "_open"){
+	&_open;
 }elsif($lcArgs[0] eq "test"){
 	&test(@lcArgs[1..$#lcArgs])
 }elsif($lcArgs[0] eq "submit"){
@@ -383,6 +385,13 @@ sub make {
 	
 	# create
 	writeFile($fileName, $template{$language});
+	writeFile("${workDir}/.open", $fileName); 
+}
+
+# put filename to open
+sub _open {
+	print(readFile("${workDir}/.open"));
+	unlink("${workDir}/.open");
 }
 
 # test program
