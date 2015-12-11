@@ -390,12 +390,25 @@ sub make {
 
 # put filename to open
 sub _open {
-	print(readFile("${workDir}/.open"));
-	unlink("${workDir}/.open");
+	local $_ = "${workDir}/.open";
+	unless(-e $_){
+		die("No file created");
+	}
+	print(readFile($_));
+	unlink($_);
 }
 
 # test program
 sub test {
+	# check whether test case is selected or not
+	my $select = do {
+		if(scalar(@_) > 1){
+			shift();
+		}else{
+			undef;
+		}
+	};
+	
 	# guess problem and language
 	my($testCases, $lang) = parse($_[0]);
 	unless($testCases = load($testCases)){
@@ -410,6 +423,9 @@ sub test {
 	
 	# test
 	foreach(sort(keys(%{$testCases->{"in"}}))){
+		if($select && $select ne $_){
+			next;
+		}
 		print($/, "#${_}: ");
 		print(do {
 			writeFile("${workDir}/test.tmp", $testCases->{"in"}->{$_});
@@ -449,6 +465,13 @@ sub test {
 
 # submit source code
 sub submit {
+	# ask user to really submit
+	print("Submit? (y/n): ");
+	$_ = <STDIN>;
+	unless(/y/i){
+		return;
+	}
+	
 	# guess problem and language
 	my($url, $lang) = parse($_[0]);
 	unless($url = deserialize("problem.txt")->{$url}){
@@ -658,7 +681,7 @@ sub save {
 	mkdir("${workDir}/${_[0]}");
 	for my $type (keys(%{$_[1]})){
 		for(keys(%{$_[1]->{$type}})){
-			writeFile("${workDir}/${_[0]}/${type}_${_}.txt", $_[1]->{$type}->{$_});
+			writeFile("${workDir}/${_[0]}/${type}${_}.txt", $_[1]->{$type}->{$_});
 		}
 	}
 }
@@ -669,7 +692,7 @@ sub load {
 	}
 	my %data;
 	while($_ = readdir(DIR)){
-		if(/^(.+)_(.+)\.txt$/){
+		if(/^(.+)(.+)\.txt$/){
 			$data{$1}{$2} = readFile("${dir}/${_}");
 		}
 	}

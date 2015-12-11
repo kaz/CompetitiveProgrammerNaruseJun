@@ -29,7 +29,7 @@ Add below code to your .vimrc (with NeoBundle)
 ### Configuration
 `:Jun config` (Prompt)  
 `:Jun config AOJ` (Prompt)  
-`:Jun config AC [AtCoderID] [AtCoderPassword]`
+`:Jun config AC [AtCoderID] [AtCoderPassword]`  
 
 ### Setup
 `:Jun setup` (Prompt)  
@@ -46,10 +46,11 @@ Add below code to your .vimrc (with NeoBundle)
 `:Jun make abc031_a C++`  
 
 ### Test
-`:Jun test`
+`:Jun test`  
+`:Jun test 1`  
 
 ### Submit
-`:Jun submit` (Your browser will open)
+`:Jun submit` (Your browser will open)  
 
 ## Author
 
