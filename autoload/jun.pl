@@ -1,6 +1,7 @@
 use utf8;
 use strict;
 use warnings;
+
 use Data::Dumper;
 use Browser::Open;
 use WWW::Mechanize;
@@ -46,28 +47,36 @@ my %langs = (
 	"C++" => ["C++14", "C++11"],
 	"D" => ["D"],
 	"Perl" => ["Perl"],
-	"Ruby" => ["Ruby"]
+	"Ruby" => ["Ruby"],
+	"Python2" => ["Python2"],
+	"Python3" => ["Python3"],
 );
 # language extension
 my %extension = (
 	"C++" => "cpp",
 	"D" => "d",
 	"Perl" => "pl",
-	"Ruby" => "rb"
+	"Ruby" => "rb",
+	"Python2" => "py",
+	"Python3" => "py",
 );
 # build commands
 my %buildCmd = (
 	"C++" => sub { "g++", "-std=c++11", "-o", "${workDir}/run.tmp", @_ },
 	"D" => sub { "dmd", "-of${workDir}/run.tmp", @_ },
 	"Perl" => sub { (&isWin ? "copy" : "cp"), @_, "${workDir}/run.tmp" },
-	"Ruby" => sub { (&isWin ? "copy" : "cp"), @_, "${workDir}/run.tmp" }
+	"Ruby" => sub { (&isWin ? "copy" : "cp"), @_, "${workDir}/run.tmp" },
+	"Python2" => sub { (&isWin ? "copy" : "cp"), @_, "${workDir}/run.tmp" },
+	"Python3" => sub { (&isWin ? "copy" : "cp"), @_, "${workDir}/run.tmp" },
 );
 # test commands
 my %testCmd = (
 	"C++" => sub { "${workDir}/run.tmp", "<", @_ },
 	"D" => sub { "${workDir}/run.tmp", "<", @_ },
 	"Perl" => sub { "perl", "${workDir}/run.tmp", "<", @_ },
-	"Ruby" => sub { "ruby", "${workDir}/run.tmp", "<", @_ }
+	"Ruby" => sub { "ruby", "${workDir}/run.tmp", "<", @_ },
+	"Python2" => sub { "python", "${workDir}/run.tmp", "<", @_ },
+	"Python3" => sub { "python", "${workDir}/run.tmp", "<", @_ },
 );
 # language templates
 my %template = (
@@ -99,6 +108,14 @@ EOS
 ######################################
 	,"Ruby" => <<'EOS'
 puts("Hello, world!")
+EOS
+#######################################
+	,"Python2" => <<'EOS'
+print "Hello, world!"
+EOS
+#######################################
+	,"Python3" => <<'EOS'
+print "Hello, world!"
 EOS
 #######################################
 );
@@ -292,8 +309,8 @@ sub _setupAC {
 			}else{
 				userSelect("Select contest", do {
 					print("* Fetching contest list ...", $/);
-					$mech->get("http://atcoder.jp/");
-					unless($mech->content() =~ /次回コンテスト<\/h3>(.+?)<h3>/s){
+					$mech->get("https://atcoder.jp/?lang=ja");
+					unless($mech->content =~ /開催中(.+?)終了後/s){
 						die("Could not find contest list");
 					}
 					$_ = $1;
